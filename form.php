@@ -3,78 +3,87 @@
 require __DIR__ . '/inc/functions.inc.php';
 require __DIR__ . '/inc/db-connect.inc.php';
 
-date_default_timezone_set('Europe/Berlin');
+if (!empty($_POST)) {
+    $title = (string) ($_POST['title'] ?? '');
+    $date = (string) ($_POST['date'] ?? '');
+    $message = (string) ($_POST['message'] ?? '');
+    $imageName = null;
+    
+    if (!empty($_FILES) && !empty($_FILES['image'])) {
+        if ($_FILES['image']['error'] === 0 && $_FILES['image']['size'] !== 0) {
+            $nameWithoutExtension = pathinfo($_FILES['image']['name'], PATHINFO_FILENAME);
+            $name = preg_replace('/[^a-zA-Z0-9]/', '', $nameWithoutExtension);
+    
+            $originalImage = $_FILES['image']['tmp_name'];
+            $imageName = $name . '-' . time() . '.jpg';
+            $destImage = __DIR__ . '/uploads/' . $imageName;
+    
+            $imageSize = getimagesize($originalImage);
+            if (!empty($imageSize)) {
+                [$width, $height] = $imageSize;
+    
+                $maxDim = 400;
+                // var_dump($width);
+                // var_dump($height);
+                $scaleFactor = $maxDim / max($width, $height);
+        
+                $newWidth = $width * $scaleFactor;
+                $newHeight = $height * $scaleFactor;
+        
+                $im = imagecreatefromjpeg($originalImage);
+                if (!empty($im)) {
+                    $newImg = imagecreatetruecolor($newWidth, $newHeight);
+                    imagecopyresampled($newImg, $im, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+            
+                    imagejpeg($newImg, $destImage);
+                }
+            }
+            
+        }
+    }
 
-$perPage = 3;
-$page = (int) ($_GET['page'] ?? 1);
-if ($page < 1) $page = 1;
+    $stmt = $pdo->prepare('INSERT INTO `entries` (`title`, `date`, `message`, `image`) VALUES (:title, :date, :message, :image)');
+    $stmt->bindValue(':title', $title);
+    $stmt->bindValue(':date', $date);
+    $stmt->bindValue(':message', $message);
+    $stmt->bindValue(':image', $imageName);
+    $stmt->execute();
 
-$offset = ($page - 1) * $perPage;
-
-$stmtCount = $pdo->prepare('SELECT COUNT(*) AS `count` FROM `entries`');
-$stmtCount->execute();
-$count = $stmtCount->fetch(PDO::FETCH_ASSOC)['count'];
-
-$numPages = ceil($count / $perPage);
-
-$stmt = $pdo->prepare('SELECT * FROM `entries` ORDER BY `date` DESC, `id` DESC LIMIT :perPage OFFSET :offset');
-$stmt->bindValue('perPage', (int) $perPage, PDO::PARAM_INT);
-$stmt->bindValue('offset', (int) $offset, PDO::PARAM_INT);
-$stmt->execute();
-$results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    echo '<a href="index.php">Continue to the diary</a>';
+    die();
+}
 
 ?>
 <?php require __DIR__ . '/views/header.view.php'; ?>
-<h1 class="main-heading">Entries</h1>
-<?php foreach ($results AS $result): ?>
-    <div class="card">
-        <?php if (!empty($result['image'])): ?>
-            <div class="card__image-container">
-                <img class="card__image" src="uploads/<?php echo e($result['image']); ?>" alt="" />
-            </div>
-        <?php endif; ?>
-        <div class="card__desc-container">
-            <?php
-                $dateExploded = explode('-', $result['date']);
-                // var_dump($dateExploded);
-                $timestamp = mktime(12, 0, 0, $dateExploded[1], $dateExploded[2], $dateExploded[0]);
-                // var_dump($timestamp);
-            ?>
-            <?php /* <div class="card__desc-time"><?php echo e(date('d.m.Y', $timestamp)); ?></div> */ ?>
-            <div class="card__desc-time"><?php echo e(date('m/d/Y', $timestamp)); ?></div>
-            <h2 class="card__heading"><?php echo e($result['title']); ?></h2>
-            <p class="card__paragraph">
-                <?php echo nl2br(e($result['message'])); ?>
-            </p>
-        </div>
-    </div>
-<?php endforeach; ?>
+<h1 class="main-heading">New Entry</h1>
 
-<?php if ($numPages > 1): ?>
-    <ul class="pagination">
-        <?php if ($page > 1): ?>
-            <li class="pagination__li">
-                <a 
-                    class="pagination__link" 
-                    href="index.php?<?php echo http_build_query(['page' => $page - 1]); ?>">⏴</a>
-            </li>
-        <?php endif; ?>
-        <?php for($x = 1; $x <= $numPages; $x++): ?>
-            <li class="pagination__li">
-                <a 
-                    class="pagination__link <?php if ($page === $x): ?>pagination__link--active<?php endif; ?>" 
-                    href="index.php?<?php echo http_build_query(['page' => $x]); ?>">
-                    <?php echo e($x); ?>
-                </a>
-            </li>
-        <?php endfor; ?>
-        <?php if ($page < $numPages): ?>
-            <li class="pagination__li">
-                <a 
-                    class="pagination__link" 
-                    href="index.php?<?php echo http_build_query(['page' => $page + 1]); ?>">⏵</a>
-            </li>
-        <?php endif; ?>
-    </ul>
-<?php endif; ?>
+<form method="POST" action="form.php" enctype="multipart/form-data">
+    <div class="form-group">
+        <label class="from-group__label" for="title">Title:</label>
+        <input class="from-group__input" type="text" id="title" name="title" required />
+    </div>
+    <div class="form-group">
+        <label class="from-group__label" for="date">Date:</label>
+        <input class="from-group__input" type="date" id="date" name="date" required/>
+    </div>
+    <div class="form-group">
+        <label class="from-group__label" for="image">Image:</label>
+        <input class="from-group__input" type="file" id="image" name="image" />
+    </div>
+    <div class="form-group">
+        <label class="from-group__label" for="message">Message:</label>
+        <textarea class="from-group__input" id="message" name="message" rows="6" required></textarea>
+    </div>
+    <div class="form-submit">
+        <button class="button">
+            <svg class="button__icon" viewBox="0 0 34.7163912799 33.4350009649">
+                <g style="fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2px;">
+                    <polygon points="20.6844359446 32.4350009649 33.7163912799 1 1 10.3610302393 15.1899978903 17.5208901631 20.6844359446 32.4350009649"/>
+                    <line x1="33.7163912799" y1="1" x2="15.1899978903" y2="17.5208901631"/>
+                </g>
+            </svg>
+            Save!
+        </button>
+    </div>
+</form>
 <?php require __DIR__ . '/views/footer.view.php'; ?>
