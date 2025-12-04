@@ -23,8 +23,6 @@ if (!empty($_POST)) {
                 [$width, $height] = $imageSize;
     
                 $maxDim = 400;
-                // var_dump($width);
-                // var_dump($height);
                 $scaleFactor = $maxDim / max($width, $height);
         
                 $newWidth = $width * $scaleFactor;
